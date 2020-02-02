@@ -44,7 +44,7 @@ az account show 2>&1 1>/dev/null || {
   exit 1
 }
 if [ "$DEBUG" = "true" ]; then
-  echo -e "\e[34mRetrieving resource Id of '${SITENAME}'\e[m";
+  echo -e "\e[34mRetrieving resource Id of '${SITENAME}'\e[m" >&2;
 fi
 RESOURCE_ID=$(az webapp list --query "[?name=='${SITENAME}'].id" | jq -r ".[0]")
 
@@ -54,12 +54,12 @@ if [ ${RESOURCE_ID} == 'null' ]; then
 fi
 
 if [ "$DEBUG" = "true" ]; then
-  echo -e "\e[34m  -> ${RESOURCE_ID}'\e[m";
+  echo -e "\e[34m  -> ${RESOURCE_ID}'\e[m" >&2;
 fi
 
 mkdir -p "${SSH2WEBAPP_HOME}"
 if [ "$DEBUG" = "true" ]; then
-  echo -e "\e[34mEstablishing remote connection to the site.'\e[m";
+  echo -e "\e[34mEstablishing remote connection to the site.'\e[m" >&2;
 fi
 az webapp create-remote-connection --ids $RESOURCE_ID 2>"${SSH2WEBAPP_HOME}/connect2${SITENAME}" &
 CONNECTION_PROC_ID=$!
@@ -87,15 +87,23 @@ grep -E "^ERROR" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" 1>&2 && {
 echo -en "\e[m"
 
 if [ "$DEBUG" = "true" ]; then
-  echo -e "\e[34mRemote connection is established.\e[m";
+  echo -e "\e[34mRemote connection to \`${SITENAME}\` is established.\n------------------------------------------------------" >&2
+  tail -n 3 "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk '{for(i=2;i<NF;i++){printf("%s%s",$i,OFS=" ")}print $NF}' >&2
+  echo -e "------------------------------------------------------\e[m" >&2;
 fi
 
 PORT=$(grep "port:" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk '{print $6}')
 USERNAME=$(grep "username" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $7}')
 PASSWORD=$(grep "password" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $10}')
 if [ "$DEBUG" = "true" ]; then
-  echo -e "\e[34mConnecting by following command:\n  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT}\e[m";
+  echo -e "\e[34mConnecting by following command:\n  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT}\e[m"; >&2
 fi
 echo -e "\e[31mEnter \`${PASSWORD}\` as password for ssh login.\e[m" >&2
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT} 2>/dev/null
-
+while true
+do
+  sleep 1
+  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT} 2>/dev/null && break
+  if [ "$DEBUG" = "true" ]; then
+    echo -e "\e[34mRetrying to connect to  127.0.0.1 port ${PORT} ...\e[m"; >&2
+  fi
+done
