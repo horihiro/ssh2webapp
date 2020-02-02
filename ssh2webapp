@@ -1,5 +1,4 @@
 #!/bin/bash
-
 function usage {
   cat <<EOM
 
@@ -95,14 +94,16 @@ fi
 PORT=$(grep "port:" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk '{print $6}')
 USERNAME=$(grep "username" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $7}')
 PASSWORD=$(grep "password" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $10}')
+SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 ${USERNAME}@localhost -p ${PORT}"
+
 if [ "$DEBUG" = "true" ]; then
-  echo -e "\e[34mConnecting by following command:\n  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT}\e[m"; >&2
+  echo -e "\e[34mConnecting by following command:\n  ${SSH_COMMAND}\e[m"; >&2
 fi
 echo -e "\e[31mEnter \`${PASSWORD}\` as password for ssh login.\e[m" >&2
 while true
 do
   sleep 1
-  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT} 2>/dev/null && break
+  ${SSH_COMMAND} 2>/dev/null && break
   if [ "$DEBUG" = "true" ]; then
     echo -e "\e[34mRetrying to connect to  127.0.0.1 port ${PORT} ...\e[m"; >&2
   fi
