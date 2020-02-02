@@ -64,7 +64,6 @@ fi
 az webapp create-remote-connection --ids $RESOURCE_ID 2>"${SSH2WEBAPP_HOME}/connect2${SITENAME}" &
 CONNECTION_PROC_ID=$!
 ps > /dev/null
-# trap "while true; do KILL_ID=$(ps ho pid --ppid=${CONNECTION_PROC_ID}); if [ -z \"$KILL_ID\" ]; then sleep 1; continue; else break; fi done; kill $KILL_ID || echo IDs are $KILL_ID,$CONNECTION_PROC_ID; rm ${SSH2WEBAPP_HOME}/connect2${SITENAME}" EXIT
 trap "kill $(ps ho pid --ppid=${CONNECTION_PROC_ID}); rm ${SSH2WEBAPP_HOME}/connect2${SITENAME}" EXIT
 
 chars="/-\|"
@@ -94,11 +93,6 @@ fi
 PORT=$(grep "port:" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk '{print $6}')
 USERNAME=$(grep "username" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $7}')
 PASSWORD=$(grep "password" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $10}')
-# echo -e "#!/bin/bash\necho ${PASSWORD}" > ${SSH2WEBAPP_HOME}/passwd4${SITENAME}
-# chmod +x ${SSH2WEBAPP_HOME}/passwd4${SITENAME}
-# export SSH_ASKPASS=${SSH2WEBAPP_HOME}/passwd4${SITENAME}
-# $SSH_ASKPASS
-# export DISPLAY=dummy/${SITENAME}:0  
 if [ "$DEBUG" = "true" ]; then
   echo -e "\e[34mConnecting by following command:\n  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT}\e[m";
 fi
