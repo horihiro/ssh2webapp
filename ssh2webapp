@@ -1,0 +1,107 @@
+#!/bin/bash
+
+function usage {
+  cat <<EOM
+
+  This is a wrapper script of Azure CLI and ssh for connecting to App Service on Linux
+  https://github.com/horihiro/ssh2webapp
+
+  Usage: $(basename "$0") [OPTION]...
+
+    -h             Display help
+    -n <sitename>  Connect to <sitename> which is a part of default FQDN of the app.
+                   i.e.\`<sitename>.azurewebsites.net\`
+    -d             Display debug message
+
+EOM
+  exit 2
+}
+
+while getopts n:hd OPT
+do
+  case $OPT in
+    "n" ) SITENAME="$OPTARG" ;;
+    "h" ) usage;;
+    "d" ) DEBUG=true;;
+  esac
+done
+
+if [ -z $SITENAME ]; then
+  usage
+fi
+
+SSH2WEBAPP_HOME=~/.ssh2webapp
+
+which az 2>&1 1>/dev/null || {
+  echo -e "\e[31mCannot find \`az\` command in your computer.\nPlease install Azure CLI.\e[m" >&2
+  exit 1
+}
+which jq 2>&1 1>/dev/null || {
+  echo -e "\e[31mCannot find \`jq\` command in your computer.\nPlease install jq.\e[m" >&2
+  exit 1
+}
+az account show 2>&1 1>/dev/null || {
+  exit 1
+}
+if [ "$DEBUG" = "true" ]; then
+  echo -e "\e[34mRetrieving resource Id of '${SITENAME}'\e[m";
+fi
+RESOURCE_ID=$(az webapp list --query "[?name=='${SITENAME}'].id" | jq -r ".[0]")
+
+if [ ${RESOURCE_ID} == 'null' ]; then
+  echo -e "\e[31mThe site \`${SITENAME}\` is not found.\e[m" >&2
+  exit 1
+fi
+
+if [ "$DEBUG" = "true" ]; then
+  echo -e "\e[34m  -> ${RESOURCE_ID}'\e[m";
+fi
+
+mkdir -p "${SSH2WEBAPP_HOME}"
+if [ "$DEBUG" = "true" ]; then
+  echo -e "\e[34mEstablishing remote connection to the site.'\e[m";
+fi
+az webapp create-remote-connection --ids $RESOURCE_ID 2>"${SSH2WEBAPP_HOME}/connect2${SITENAME}" &
+CONNECTION_PROC_ID=$!
+ps > /dev/null
+# trap "while true; do KILL_ID=$(ps ho pid --ppid=${CONNECTION_PROC_ID}); if [ -z \"$KILL_ID\" ]; then sleep 1; continue; else break; fi done; kill $KILL_ID || echo IDs are $KILL_ID,$CONNECTION_PROC_ID; rm ${SSH2WEBAPP_HOME}/connect2${SITENAME}" EXIT
+trap "kill $(ps ho pid --ppid=${CONNECTION_PROC_ID}); rm ${SSH2WEBAPP_HOME}/connect2${SITENAME}" EXIT
+
+chars="/-\|"
+for (( i=0; ; i++ )); do
+  sleep 0.5
+  j=i%4
+  echo -en "\b${chars:$j:1}" >&2
+  ls "${SSH2WEBAPP_HOME}/connect2${SITENAME}" 2>&1 1>/dev/null \
+    && grep -E "(Ctrl \+ C|^ERROR)" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" 2>&1 1>/dev/null \
+    || continue
+
+  echo -en "\b" >&2
+  break
+done
+
+echo -en "\e[31m"
+grep -E "^ERROR" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" 1>&2 && {
+  trap "echo -en \"\\e[m\"" EXIT
+  exit 1
+}
+echo -en "\e[m"
+
+if [ "$DEBUG" = "true" ]; then
+  echo -e "\e[34mRemote connection is established.\e[m";
+fi
+
+PORT=$(grep "port:" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk '{print $6}')
+USERNAME=$(grep "username" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $7}')
+PASSWORD=$(grep "password" "${SSH2WEBAPP_HOME}/connect2${SITENAME}" | awk -F'[, ]' '{print $10}')
+# echo -e "#!/bin/bash\necho ${PASSWORD}" > ${SSH2WEBAPP_HOME}/passwd4${SITENAME}
+# chmod +x ${SSH2WEBAPP_HOME}/passwd4${SITENAME}
+# export SSH_ASKPASS=${SSH2WEBAPP_HOME}/passwd4${SITENAME}
+# $SSH_ASKPASS
+# export DISPLAY=dummy/${SITENAME}:0  
+if [ "$DEBUG" = "true" ]; then
+  echo -e "\e[34mConnecting by following command:\n  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT}\e[m";
+fi
+echo -e "\e[31mEnter \`${PASSWORD}\` as password for ssh login.\e[m" >&2
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USERNAME}@localhost -p ${PORT} 2>/dev/null
+
